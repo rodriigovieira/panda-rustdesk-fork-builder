@@ -73,6 +73,12 @@ jobs:
           git apply ../builder/patches/rustdesk/pandapdv-temporary-password-ipc.patch
           git diff --check
 
+      - name: Refresh Cargo lockfile after Panda patch
+        shell: bash
+        working-directory: rustdesk
+        run: |
+          cargo generate-lockfile
+
       - name: Download Sciter runtime
         shell: bash
         working-directory: rustdesk
