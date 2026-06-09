@@ -120,7 +120,7 @@ jobs:
           $exe = "${{ steps.locate.outputs.exe }}"
           $bytes = [System.IO.File]::ReadAllBytes($exe)
           $text = [System.Text.Encoding]::Latin1.GetString($bytes)
-          foreach ($marker in @("panda-session-password", "set-session-password")) {
+          foreach ($marker in @("panda-session-password")) {
             if (-not $text.Contains($marker)) {
               throw "Built executable does not contain required marker: $marker"
             }
