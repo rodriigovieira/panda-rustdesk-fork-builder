@@ -1,0 +1,133 @@
+name: Build Panda RustDesk Fork
+
+on:
+  workflow_dispatch:
+    inputs:
+      rustdesk_commit:
+        description: "RustDesk commit to build"
+        required: true
+        default: "6426269d41a73f678180a9ef733300a8f8a1b912"
+      build_command:
+        description: "Build command to run from RustDesk checkout"
+        required: true
+        default: "python build.py"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows x64 fork
+    runs-on: windows-2022
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout builder repo
+        uses: actions/checkout@v4
+        with:
+          path: builder
+
+      - name: Checkout RustDesk source
+        uses: actions/checkout@v4
+        with:
+          repository: rustdesk/rustdesk
+          ref: ${{ inputs.rustdesk_commit }}
+          submodules: recursive
+          path: rustdesk
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Windows build prerequisites
+        shell: pwsh
+        run: |
+          choco install llvm -y --no-progress
+          choco install nasm -y --no-progress
+          choco install wget -y --no-progress
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\buildtrees
+            C:\vcpkg\packages
+            C:\vcpkg\downloads
+          key: rustdesk-vcpkg-windows-x64-${{ inputs.rustdesk_commit }}-${{ hashFiles('rustdesk/vcpkg.json') }}
+          restore-keys: |
+            rustdesk-vcpkg-windows-x64-
+
+      - name: Install vcpkg dependencies
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          "VCPKG_ROOT=C:\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          C:\vcpkg\vcpkg.exe install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
+
+      - name: Apply PandaPDV RustDesk fork patch
+        shell: bash
+        working-directory: rustdesk
+        run: |
+          git apply ../builder/patches/rustdesk/pandapdv-temporary-password-ipc.patch
+          git diff --check
+
+      - name: Download Sciter runtime
+        shell: bash
+        working-directory: rustdesk
+        run: |
+          mkdir -p target/debug target/release
+          wget -q https://raw.githubusercontent.com/c-smile/sciter-sdk/master/bin.win/x64/sciter.dll
+          cp sciter.dll target/debug/sciter.dll
+          cp sciter.dll target/release/sciter.dll
+
+      - name: Build RustDesk fork
+        shell: bash
+        working-directory: rustdesk
+        run: |
+          export VCPKG_ROOT=/c/vcpkg
+          export LIBCLANG_PATH="/c/Program Files/LLVM/bin"
+          ${{ inputs.build_command }}
+
+      - name: Locate built executable
+        id: locate
+        shell: pwsh
+        working-directory: rustdesk
+        run: |
+          $candidates = Get-ChildItem -Recurse -Filter rustdesk.exe |
+            Where-Object { $_.FullName -match '\\target\\|\\Release\\|\\release\\|\\build\\|\\flutter\\build\\windows' } |
+            Sort-Object Length -Descending
+          if (-not $candidates -or $candidates.Count -eq 0) {
+            Get-ChildItem -Recurse -Filter rustdesk.exe | Select-Object FullName,Length
+            throw "No rustdesk.exe build artifact found."
+          }
+          $exe = $candidates[0].FullName
+          Write-Host "Selected $exe ($($candidates[0].Length) bytes)"
+          "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Verify Panda fork markers
+        shell: pwsh
+        run: |
+          $exe = "${{ steps.locate.outputs.exe }}"
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
+          $text = [System.Text.Encoding]::Latin1.GetString($bytes)
+          foreach ($marker in @("panda-session-password", "set-session-password")) {
+            if (-not $text.Contains($marker)) {
+              throw "Built executable does not contain required marker: $marker"
+            }
+          }
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item "${{ steps.locate.outputs.exe }}" artifact\rustdesk.exe
+          Get-Item artifact\rustdesk.exe | Select-Object FullName,Length
+
+      - name: Upload rustdesk.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: panda-rustdesk-fork-windows-x64
+          path: artifact/rustdesk.exe
+          if-no-files-found: error
