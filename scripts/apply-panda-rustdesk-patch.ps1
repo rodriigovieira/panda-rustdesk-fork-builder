@@ -4,8 +4,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$ExpectedSha256 = "a362d3521eaa04440e751e669f7427e9bb7b534c1d446617bc944cbe653301b2"
-$ExpectedLineCount = 366
+$ExpectedSha256 = "ba280bd69eb23c92d6cd8a87d25ea8a6fafcfd5f9525d6775ea8dfc911b7bf47"
+$ExpectedLineCount = 378
 
 if (-not (Test-Path ".git")) {
   throw "Run this from the RustDesk checkout root, where .git exists."
@@ -31,8 +31,5 @@ git apply --check $PatchPath
 
 Write-Host "Applying patch..."
 git apply $PatchPath
-
-Write-Host "Refreshing Cargo.lock for the added hmac dependency..."
-cargo generate-lockfile
 
 Write-Host "Patch applied successfully."
