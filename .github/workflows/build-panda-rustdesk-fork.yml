@@ -70,7 +70,7 @@ jobs:
         shell: bash
         working-directory: rustdesk
         run: |
-          git apply ../builder/patches/rustdesk/pandapdv-temporary-password-ipc.patch
+          git apply --recount ../builder/patches/rustdesk/pandapdv-temporary-password-ipc.patch
           git diff --check
 
       - name: Download Sciter runtime

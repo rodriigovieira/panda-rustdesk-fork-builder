@@ -27,9 +27,9 @@ if ($LineCount -ne $ExpectedLineCount) {
 }
 
 Write-Host "Checking patch..."
-git apply --check $PatchPath
+git apply --check --recount $PatchPath
 
 Write-Host "Applying patch..."
-git apply $PatchPath
+git apply --recount $PatchPath
 
 Write-Host "Patch applied successfully."
