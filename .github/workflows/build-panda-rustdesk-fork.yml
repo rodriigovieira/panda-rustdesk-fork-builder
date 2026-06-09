@@ -10,7 +10,7 @@ on:
       build_command:
         description: "Build command to run from RustDesk checkout"
         required: true
-        default: "python build.py"
+        default: "cargo build --locked --release"
 
 permissions:
   contents: read
@@ -95,8 +95,16 @@ jobs:
         shell: pwsh
         working-directory: rustdesk
         run: |
+          $preferred = Join-Path $PWD "target\release\rustdesk.exe"
+          if (Test-Path $preferred) {
+            $exe = (Get-Item $preferred).FullName
+            Write-Host "Selected $exe ($((Get-Item $exe).Length) bytes)"
+            "exe=$exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            return
+          }
+
           $candidates = Get-ChildItem -Recurse -Filter rustdesk.exe |
-            Where-Object { $_.FullName -match '\\target\\|\\Release\\|\\release\\|\\build\\|\\flutter\\build\\windows' } |
+            Where-Object { $_.FullName -match '\\target\\release\\|\\target\\|\\Release\\|\\release\\|\\build\\|\\flutter\\build\\windows' } |
             Sort-Object Length -Descending
           if (-not $candidates -or $candidates.Count -eq 0) {
             Get-ChildItem -Recurse -Filter rustdesk.exe | Select-Object FullName,Length
